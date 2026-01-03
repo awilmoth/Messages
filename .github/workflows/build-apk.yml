@@ -21,19 +21,18 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Clean gradle cache
+      - name: Clean all caches
         run: |
-          rm -rf ~/.gradle/caches/
+          rm -rf ~/.gradle/
           rm -rf .gradle/
+          rm -rf ~/Library/Caches/gradle/
           mkdir -p ~/.gradle
-
-      - name: Clean build cache
-        run: |
-          chmod +x ./gradlew
-          ./gradlew clean --no-daemon
+          echo "org.gradle.cacheDir=$(mktemp -d)" > ~/.gradle/gradle.properties
 
       - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon --parallel
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --no-build-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
