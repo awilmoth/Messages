@@ -13,7 +13,8 @@ class ApiService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(tag, "ApiService created")
+        Log.d(tag, "ApiService created - PID: ${android.os.Process.myPid()}")
+        Log.d(tag, "Debug build - extra logging enabled")
         
         apiServer = ApiServer(
             context = this,
@@ -23,13 +24,14 @@ class ApiService : Service() {
         val started = apiServer?.startServer() ?: false
         if (started) {
             Log.d(tag, "API Server started successfully on port $apiPort")
+            Log.d(tag, "Service ready to accept connections from WireGuard (10.0.0.1)")
         } else {
             Log.e(tag, "Failed to start API Server")
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(tag, "onStartCommand called")
+        Log.d(tag, "onStartCommand called - Service should stay running")
         return START_STICKY
     }
 

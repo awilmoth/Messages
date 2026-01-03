@@ -54,6 +54,7 @@ import org.fossify.messages.BuildConfig
 import org.fossify.messages.R
 import org.fossify.messages.adapters.ConversationsAdapter
 import org.fossify.messages.adapters.SearchResultsAdapter
+import org.fossify.messages.api.ApiService
 import org.fossify.messages.databinding.ActivityMainBinding
 import org.fossify.messages.extensions.checkAndDeleteOldRecycleBinMessages
 import org.fossify.messages.extensions.clearAllMessagesIfNeeded
@@ -689,11 +690,22 @@ class MainActivity : SimpleActivity() {
     }
     
     private fun startApiService() {
+        // Check if INTERNET permission is available
+        if (checkSelfPermission(android.Manifest.permission.INTERNET) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            android.util.Log.e("MainActivity", "INTERNET permission not granted")
+            return
+        }
+        
         try {
-            val serviceIntent = Intent(this, org.fossify.messages.api.ApiService::class.java)
-            startService(serviceIntent)
+            val serviceIntent = Intent(this, ApiService::class.java)
+            val result = startService(serviceIntent)
+            if (result != null) {
+                android.util.Log.d("MainActivity", "ApiService started successfully")
+            } else {
+                android.util.Log.e("MainActivity", "Failed to start ApiService - returned null")
+            }
         } catch (e: Exception) {
-            // Service not found or failed to start
+            android.util.Log.e("MainActivity", "Exception starting ApiService: ${e.message}", e)
         }
     }
 }
