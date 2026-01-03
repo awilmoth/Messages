@@ -2,88 +2,43 @@ package org.fossify.messages.api
 
 import android.content.Context
 import android.util.Log
-import fi.iki.elonen.NanoHTTPD
-import com.google.gson.Gson
+import java.io.BufferedReader
+import java.io.PrintWriter
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.Executors
 
 class ApiServer(
     private val context: Context,
     private val port: Int = 8080
-) : NanoHTTPD(port) {
+) {
     
+    private var serverSocket: ServerSocket? = null
     private var serverRunning = false
-    private val gson = Gson()
+    private val executor = Executors.newFixedThreadPool(5)
     private val tag = "ApiServer"
-
-    override fun serve(session: IHTTPSession?): Response {
-        return try {
-            when (session?.uri) {
-                "/api/send-sms" -> handleSendSms(session)
-                "/api/send-mms" -> handleSendMms(session)
-                "/api/status" -> newFixedLengthResponse(
-                    Response.Status.OK,
-                    "application/json",
-                    gson.toJson(mapOf("status" to "running", "port" to port))
-                )
-                else -> newFixedLengthResponse(
-                    Response.Status.NOT_FOUND,
-                    "application/json",
-                    gson.toJson(mapOf("error" to "endpoint not found"))
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Error handling request: ${e.message}", e)
-            newFixedLengthResponse(
-                Response.Status.INTERNAL_ERROR,
-                "application/json",
-                gson.toJson(mapOf("error" to e.message))
-            )
-        }
-    }
-
-    private fun handleSendSms(session: IHTTPSession): Response {
-        val params = mutableMapOf<String, String>()
-        session.parseBody(params)
-        
-        val to = params["to"] ?: ""
-        val message = params["message"] ?: ""
-        
-        return if (to.isNotEmpty() && message.isNotEmpty()) {
-            try {
-                Log.d(tag, "SMS to $to: $message")
-                newFixedLengthResponse(
-                    Response.Status.OK,
-                    "application/json",
-                    gson.toJson(mapOf("status" to "queued", "to" to to))
-                )
-            } catch (e: Exception) {
-                newFixedLengthResponse(
-                    Response.Status.INTERNAL_ERROR,
-                    "application/json",
-                    gson.toJson(mapOf("error" to e.message))
-                )
-            }
-        } else {
-            newFixedLengthResponse(
-                Response.Status.BAD_REQUEST,
-                "application/json",
-                gson.toJson(mapOf("error" to "missing parameters"))
-            )
-        }
-    }
-
-    private fun handleSendMms(session: IHTTPSession): Response {
-        return newFixedLengthResponse(
-            Response.Status.OK,
-            "application/json",
-            gson.toJson(mapOf("status" to "mms_support_coming_soon"))
-        )
-    }
 
     fun startServer(): Boolean {
         return try {
-            start()
+            serverSocket = ServerSocket(port)
             serverRunning = true
             Log.d(tag, "API Server started on port $port")
+            
+            // Start accepting connections in background
+            executor.execute {
+                while (serverRunning && !Thread.currentThread().isInterrupted) {
+                    try {
+                        val socket = serverSocket?.accept()
+                        if (socket != null) {
+                            executor.execute { handleClient(socket) }
+                        }
+                    } catch (e: Exception) {
+                        if (serverRunning) {
+                            Log.e(tag, "Error accepting connection: ${e.message}")
+                        }
+                    }
+                }
+            }
             true
         } catch (e: Exception) {
             Log.e(tag, "Failed to start API server: ${e.message}", e)
@@ -92,13 +47,60 @@ class ApiServer(
         }
     }
 
+    private fun handleClient(socket: Socket) {
+        try {
+            val reader = BufferedReader(socket.getInputStream().bufferedReader())
+            val writer = PrintWriter(socket.getOutputStream(), true)
+            
+            // Read HTTP request line
+            val requestLine = reader.readLine() ?: return
+            Log.d(tag, "Request: $requestLine")
+            
+            val response = when {
+                requestLine.contains("/api/status") -> statusResponse()
+                requestLine.contains("/api/send-sms") -> smsResponse()
+                else -> notFoundResponse()
+            }
+            
+            writer.print(response)
+            writer.flush()
+            socket.close()
+        } catch (e: Exception) {
+            Log.e(tag, "Error handling client: ${e.message}")
+        }
+    }
+
+    private fun statusResponse(): String {
+        val body = """{"status":"running","port":$port}"""
+        return httpResponse(200, "OK", body, "application/json")
+    }
+
+    private fun smsResponse(): String {
+        val body = """{"status":"queued"}"""
+        return httpResponse(200, "OK", body, "application/json")
+    }
+
+    private fun notFoundResponse(): String {
+        val body = """{"error":"endpoint not found"}"""
+        return httpResponse(404, "Not Found", body, "application/json")
+    }
+
+    private fun httpResponse(code: Int, status: String, body: String, contentType: String): String {
+        return """HTTP/1.1 $code $status
+Content-Type: $contentType
+Content-Length: ${body.length}
+Connection: close
+
+$body
+"""
+    }
+
     fun stopServer() {
         try {
-            if (serverRunning) {
-                stop()
-                serverRunning = false
-                Log.d(tag, "API Server stopped")
-            }
+            serverRunning = false
+            serverSocket?.close()
+            executor.shutdown()
+            Log.d(tag, "API Server stopped")
         } catch (e: Exception) {
             Log.e(tag, "Error stopping server: ${e.message}", e)
         }
