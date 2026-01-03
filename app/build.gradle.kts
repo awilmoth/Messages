@@ -89,7 +89,7 @@ android {
     }
 
     sourceSets {
-        getByName("main").java.srcDirs("src/main/kotlin")
+        getByName("main").java.srcDirs("src/main/kotlin", "src/main/java")
     }
 
     compileOptions {
