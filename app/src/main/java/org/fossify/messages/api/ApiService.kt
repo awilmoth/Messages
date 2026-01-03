@@ -17,10 +17,7 @@ class ApiService : Service() {
         
         apiServer = ApiServer(
             context = this,
-            port = apiPort,
-            onMessageReceived = { from, body ->
-                Log.d(tag, "Message from $from: $body")
-            }
+            port = apiPort
         )
         
         val started = apiServer?.startServer() ?: false
