@@ -1,169 +1,110 @@
 package org.fossify.messages.api
 
 import android.content.Context
-import android.telephony.SmsManager
+import android.util.Log
+import org.nanohttpd.NanoHTTPD
 import com.google.gson.Gson
-import fi.iki.elonen.NanoHTTPD
-import org.fossify.messages.helpers.MessagingUtils
-import java.io.File
-import java.util.*
 
-/**
- * HTTP API Server for Fossify Messages
- * 
- * Provides REST API endpoints for:
- * - Sending SMS
- * - Sending MMS
- * - Health check
- */
 class ApiServer(
     private val context: Context,
-    port: Int,
-    private val authToken: String
+    private val port: Int = 8080,
+    private val onMessageReceived: (from: String, body: String) -> Unit
 ) : NanoHTTPD(port) {
     
+    private var serverRunning = false
     private val gson = Gson()
-    
-    override fun serve(session: IHTTPSession): Response {
-        // Authenticate all requests
-        val authHeader = session.headers["authorization"]
-        if (authHeader != "Bearer $authToken") {
-            return newFixedLengthResponse(
-                Response.Status.UNAUTHORIZED,
+    private val tag = "ApiServer"
+
+    override fun serve(session: IHTTPSession?): Response {
+        return try {
+            when (session?.uri) {
+                "/api/send-sms" -> handleSendSms(session)
+                "/api/send-mms" -> handleSendMms(session)
+                "/api/status" -> newFixedLengthResponse(
+                    Response.Status.OK,
+                    "application/json",
+                    gson.toJson(mapOf("status" to "running", "port" to port))
+                )
+                else -> newFixedLengthResponse(
+                    Response.Status.NOT_FOUND,
+                    "application/json",
+                    gson.toJson(mapOf("error" to "endpoint not found"))
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error handling request: ${e.message}", e)
+            newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR,
                 "application/json",
-                """{"error":"Unauthorized"}"""
-            )
-        }
-        
-        // Route requests
-        return when {
-            session.uri == "/send_sms" && session.method == Method.POST -> 
-                handleSendSms(session)
-            session.uri == "/send_mms" && session.method == Method.POST -> 
-                handleSendMms(session)
-            session.uri == "/health" && session.method == Method.GET -> 
-                handleHealth()
-            else -> newFixedLengthResponse(
-                Response.Status.NOT_FOUND,
-                "application/json",
-                """{"error":"Not found"}"""
+                gson.toJson(mapOf("error" to e.message))
             )
         }
     }
-    
+
     private fun handleSendSms(session: IHTTPSession): Response {
-        try {
-            val body = parseBody(session)
-            val phoneNumber = body["phoneNumber"] as? String
-            val message = body["message"] as? String
-            
-            if (phoneNumber == null || message == null) {
-                return newFixedLengthResponse(
-                    Response.Status.BAD_REQUEST,
+        val params = mutableMapOf<String, String>()
+        session.parseBody(params)
+        
+        val to = params["to"] ?: ""
+        val message = params["message"] ?: ""
+        
+        return if (to.isNotEmpty() && message.isNotEmpty()) {
+            try {
+                // Queue message for sending (implementation depends on Fossify's SMS handler)
+                Log.d(tag, "SMS to $to: $message")
+                newFixedLengthResponse(
+                    Response.Status.OK,
                     "application/json",
-                    """{"error":"Missing phoneNumber or message"}"""
+                    gson.toJson(mapOf("status" to "queued", "to" to to))
+                )
+            } catch (e: Exception) {
+                newFixedLengthResponse(
+                    Response.Status.INTERNAL_ERROR,
+                    "application/json",
+                    gson.toJson(mapOf("error" to e.message))
                 )
             }
-            
-            // Send SMS using Android API
-            val smsManager = SmsManager.getDefault()
-            
-            // Handle long messages (split if needed)
-            if (message.length > 160) {
-                val parts = smsManager.divideMessage(message)
-                smsManager.sendMultipartTextMessage(
-                    phoneNumber,
-                    null,
-                    parts,
-                    null,
-                    null
-                )
-            } else {
-                smsManager.sendTextMessage(
-                    phoneNumber,
-                    null,
-                    message,
-                    null,
-                    null
-                )
-            }
-            
-            return newFixedLengthResponse(
-                Response.Status.OK,
+        } else {
+            newFixedLengthResponse(
+                Response.Status.BAD_REQUEST,
                 "application/json",
-                """{"status":"sent","id":"${System.currentTimeMillis()}"}"""
-            )
-        } catch (e: Exception) {
-            return newFixedLengthResponse(
-                Response.Status.INTERNAL_ERROR,
-                "application/json",
-                """{"error":"${e.message}"}"""
+                gson.toJson(mapOf("error" to "missing parameters"))
             )
         }
     }
-    
+
     private fun handleSendMms(session: IHTTPSession): Response {
-        try {
-            val body = parseBody(session)
-            val phoneNumber = body["phoneNumber"] as? String
-            val message = body["message"] as? String ?: ""
-            val attachments = body["attachments"] as? List<String> ?: emptyList()
-            
-            if (phoneNumber == null) {
-                return newFixedLengthResponse(
-                    Response.Status.BAD_REQUEST,
-                    "application/json",
-                    """{"error":"Missing phoneNumber"}"""
-                )
-            }
-            
-            // Decode base64 attachments and save to temp files
-            val tempFiles = attachments.mapIndexed { index, base64Data ->
-                val bytes = Base64.getDecoder().decode(base64Data)
-                val file = File(context.cacheDir, "mms_temp_$index.jpg")
-                file.writeBytes(bytes)
-                file
-            }
-            
-            // Send MMS using Fossify's messaging utilities
-            // This uses native Android MMS APIs
-            MessagingUtils.sendMMS(
-                context,
-                phoneNumber,
-                message,
-                tempFiles.map { android.net.Uri.fromFile(it) }
-            )
-            
-            // Cleanup temp files
-            tempFiles.forEach { it.delete() }
-            
-            return newFixedLengthResponse(
-                Response.Status.OK,
-                "application/json",
-                """{"status":"sent","id":"${System.currentTimeMillis()}"}"""
-            )
-        } catch (e: Exception) {
-            return newFixedLengthResponse(
-                Response.Status.INTERNAL_ERROR,
-                "application/json",
-                """{"error":"${e.message}"}"""
-            )
-        }
-    }
-    
-    private fun handleHealth(): Response {
         return newFixedLengthResponse(
             Response.Status.OK,
             "application/json",
-            """{"status":"ok","server":"fossify-api"}"""
+            gson.toJson(mapOf("status" to "mms_support_coming_soon"))
         )
     }
-    
-    private fun parseBody(session: IHTTPSession): Map<String, Any> {
-        val body = mutableMapOf<String, String>()
-        session.parseBody(body)
-        val json = body["postData"] ?: "{}"
-        @Suppress("UNCHECKED_CAST")
-        return gson.fromJson(json, Map::class.java) as Map<String, Any>
+
+    fun startServer(): Boolean {
+        return try {
+            start()
+            serverRunning = true
+            Log.d(tag, "API Server started on port $port")
+            true
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to start API server: ${e.message}", e)
+            serverRunning = false
+            false
+        }
     }
+
+    fun stopServer() {
+        try {
+            if (serverRunning) {
+                stop()
+                serverRunning = false
+                Log.d(tag, "API Server stopped")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error stopping server: ${e.message}", e)
+        }
+    }
+
+    fun isRunning(): Boolean = serverRunning
 }

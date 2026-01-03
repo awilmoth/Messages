@@ -181,10 +181,6 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".api.ApiService"
-            android:enabled="true"
-            android:exported="false" />
 
         <service android:name="com.android.mms.transaction.TransactionService" />
 
