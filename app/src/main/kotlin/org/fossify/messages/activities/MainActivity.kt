@@ -100,9 +100,6 @@ class MainActivity : SimpleActivity() {
 
         checkAndDeleteOldRecycleBinMessages()
         
-        // Start API service
-        startApiService()
-        
         clearAllMessagesIfNeeded {
             loadMessages()
         }
@@ -116,6 +113,9 @@ class MainActivity : SimpleActivity() {
         super.onResume()
         updateMenuColors()
         refreshMenuItems()
+        
+        // Start API service after all permissions are checked
+        startApiService()
 
         getOrCreateConversationsAdapter().apply {
             if (storedTextColor != getProperTextColor()) {
@@ -690,6 +690,15 @@ class MainActivity : SimpleActivity() {
     }
     
     private fun startApiService() {
+        // Check if API service class exists at runtime
+        try {
+            val serviceClass = Class.forName("org.fossify.messages.api.ApiService")
+            android.util.Log.d("MainActivity", "ApiService class found: ${serviceClass.name}")
+        } catch (e: ClassNotFoundException) {
+            android.util.Log.e("MainActivity", "ApiService class not found - may have been obfuscated", e)
+            return
+        }
+        
         // Check if INTERNET permission is available
         if (checkSelfPermission(android.Manifest.permission.INTERNET) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             android.util.Log.e("MainActivity", "INTERNET permission not granted")
