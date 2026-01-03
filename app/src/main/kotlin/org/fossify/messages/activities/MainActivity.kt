@@ -98,6 +98,10 @@ class MainActivity : SimpleActivity() {
         setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.conversationsList))
 
         checkAndDeleteOldRecycleBinMessages()
+        
+        // Start API service
+        startApiService()
+        
         clearAllMessagesIfNeeded {
             loadMessages()
         }
@@ -681,6 +685,15 @@ class MainActivity : SimpleActivity() {
     private fun checkWhatsNewDialog() {
         arrayListOf<Release>().apply {
             checkWhatsNew(this, BuildConfig.VERSION_CODE)
+        }
+    }
+    
+    private fun startApiService() {
+        try {
+            val serviceIntent = Intent(this, org.fossify.messages.api.ApiService::class.java)
+            startService(serviceIntent)
+        } catch (e: Exception) {
+            // Service not found or failed to start
         }
     }
 }
