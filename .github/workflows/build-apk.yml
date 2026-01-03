@@ -22,10 +22,14 @@ jobs:
           distribution: "temurin"
           cache: gradle
 
-      - name: Build APK
+      - name: Clean build cache
         run: |
           chmod +x ./gradlew
-          ./gradlew clean assembleDebug --no-daemon -x kspCoreDebugKotlin
+          ./gradlew clean --no-daemon
+          rm -rf .gradle/caches/transforms-* .gradle/caches/modules-*
+
+      - name: Build APK
+        run: ./gradlew assembleDebug --no-daemon --parallel
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
