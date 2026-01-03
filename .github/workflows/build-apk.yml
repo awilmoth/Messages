@@ -20,13 +20,17 @@ jobs:
         with:
           java-version: "21"
           distribution: "temurin"
-          cache: gradle
+
+      - name: Clean gradle cache
+        run: |
+          rm -rf ~/.gradle/caches/
+          rm -rf .gradle/
+          mkdir -p ~/.gradle
 
       - name: Clean build cache
         run: |
           chmod +x ./gradlew
           ./gradlew clean --no-daemon
-          rm -rf .gradle/caches/transforms-* .gradle/caches/modules-*
 
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon --parallel
