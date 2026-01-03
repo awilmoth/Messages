@@ -2,13 +2,12 @@ package org.fossify.messages.api
 
 import android.content.Context
 import android.util.Log
-import org.nanohttpd.NanoHTTPD
+import fi.iki.elonen.NanoHTTPD
 import com.google.gson.Gson
 
 class ApiServer(
     private val context: Context,
-    private val port: Int = 8080,
-    private val onMessageReceived: (from: String, body: String) -> Unit
+    private val port: Int = 8080
 ) : NanoHTTPD(port) {
     
     private var serverRunning = false
@@ -50,7 +49,6 @@ class ApiServer(
         
         return if (to.isNotEmpty() && message.isNotEmpty()) {
             try {
-                // Queue message for sending (implementation depends on Fossify's SMS handler)
                 Log.d(tag, "SMS to $to: $message")
                 newFixedLengthResponse(
                     Response.Status.OK,
